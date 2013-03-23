@@ -160,6 +160,6 @@ somewhat like this:
 Any missing methods can also be replaced by calling api object in the same way
 as above, passing all the appropriate (as per docs) parameters.
 
-My here purposes are quite narrow, as I use service only for file storage, so
-missing sharing/collaboration are unlikely to be implemented here without
+My purposes are quite narrow - I use service only for file storage - so missing
+sharing/collaboration wrappers are unlikely to be implemented here without
 patches from someone interested in having these.
