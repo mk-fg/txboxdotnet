@@ -20,7 +20,7 @@ setup(
 	keywords = [
 		'boxdotnet', 'box', 'box.net', 'box.com', 'twisted'
 		'async', 'api', 'rest', 'json', 'storage', 'storage provider', 'file hosting' ],
-	url = 'http://github.com/mk-fg/txboxdotnet',
+	url = 'https://github.com/mk-fg/txboxdotnet',
 
 	description = 'Twisted-based async interface for Box (box.net) API v2.0',
 	long_description = readme,
