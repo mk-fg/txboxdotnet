@@ -171,7 +171,7 @@ class BoxAPIWrapper(BoxAuthMixin):
 
 	#: Box uses a separate URL for upload ops
 	#: Can be empty to use generic api_url_base
-	api_url_upload = 'https://upload.box.com/2.0/'
+	api_url_upload = 'https://upload.box.com/api/2.0/'
 
 	def _api_url( self, path, query=dict(), upload=False,
 			pass_access_token=True, pass_empty_values=False ):
@@ -188,7 +188,7 @@ class BoxAPIWrapper(BoxAuthMixin):
 			'{}?{}'.format(path, urllib.urlencode(query)) )
 
 	def __call__( self, url, query=dict(),
-			query_filter=True, auth_header=False,
+			query_filter=True, auth_header=True,
 			auto_refresh_token=True, upload=False, **request_kwz ):
 		'''Make an arbitrary call to Box API.
 			Shouldn't be used directly under most circumstances.'''
@@ -211,13 +211,75 @@ class BoxAPIWrapper(BoxAuthMixin):
 					= 'Bearer {}'.format(self.auth_access_token)
 			return self.request(api_url(), **request_kwz)
 
+
 	def listdir(self, folder_id='0', offset=None, limit=None):
 		'Get Box object, representing list of objects in a folder.'
 		return self(join('folders', folder_id, 'items'), dict(offset=offset, limit=limit))
 
 	def get_user_info(self):
-		'Get Box object, representing user, containing quota info (among other info).'
+		'''Get Box object, representing user, containing quota info (among other info).
+			See http://developers.box.com/docs/#users-user-object'''
 		return self('users/me')
+
+	def info_file(self, file_id):
+		'''Return metadata of a specified file.
+			See http://developers.box.com/docs/#files-file-object-2
+				for the list and description of possible metadata keys.'''
+		return self(join('files', file_id))
+
+	def info_folder(self, folder_id='0'):
+		'''Return metadata of a specified folder.
+			See http://developers.box.com/docs/#folders-folder-object
+				for the list and description of possible metadata keys.'''
+		return self(join('folders', folder_id))
+
+
+	def get(self, file_id, byte_range=None, version=None):
+		'''Download and return an file (object) or a specified byte_range from it.
+			Version keyword is API-specific, see "etag" file info key:
+				http://developers.box.com/docs/#files-file-object-2
+			See HTTP Range header (rfc2616) for possible byte_range formats,
+				some examples: "0-499" - byte offsets 0-499 (inclusive), "-500" - final 500 bytes.'''
+		kwz = dict()
+		if byte_range: kwz['headers'] = dict(Range='bytes={}'.format(byte_range))
+		return self(join('files', file_id, 'content'), dict(version=version), raw=True, **kwz)
+
+	def put(self, path_or_tuple, folder_id='0', file_id=None, file_etag=None):
+		'''Upload a file, returning error if a file with the same "name" attribute exists,
+				unless valid file_id (and optionally file_etag,
+				to avoid race conditions, raises error 412) is provided.
+			folder_id is the id of a folder to put file into,
+				but only used if file_id keyword is not passed.'''
+		name, src = (basename(path_or_tuple), open(path_or_tuple))\
+			if isinstance(path_or_tuple, types.StringTypes)\
+			else (path_or_tuple[0], path_or_tuple[1])
+		folder_id = dict(parent_id=folder_id) if file_id is None else dict()
+		return self(
+			join('files', 'content') if file_id is None else join('files', file_id, 'content'),
+			method='post', upload=True,
+			headers={'If-Match': file_etag} if file_etag else dict(),
+			files=dict(filename=(name, src), **folder_id) )
+
+	def mkdir(self, name=None, folder_id='0'):
+		'''Create a folder with a specified "name" attribute.
+			folder_id allows to specify a parent folder.'''
+		return self( 'folders', method='post', encode='json',
+			data=dict(name=name, parent=dict(id=folder_id)) )
+
+	def delete_file(self, file_id, file_etag=None):
+		'''Delete specified file.
+			Pass file_etag to avoid race conditions (raises error 412).'''
+		return self( join('files', file_id), method='delete',
+			headers={'If-Match': file_etag} if file_etag else dict() )
+
+	def delete_folder(self, folder_id, folder_etag=None, recursive=None):
+		'''Delete specified folder.
+			Pass folder_etag to avoid race conditions (raises error 412).
+			recursive keyword does just what it says on the tin.'''
+		return self( join('folders', folder_id),
+			dict(recursive=recursive), method='delete',
+			headers={'If-Match': folder_etag} if folder_etag else dict() )
+
 
 
 
@@ -340,6 +402,7 @@ class MultipartDataSender(FileBodyProducer):
 		for name, data in self.fields.viewitems():
 			dst.write(b'--{}\r\n'.format(self.boundary))
 
+			ct = None
 			if isinstance(data, tuple):
 				fn, data = data
 				ct = guess_type(fn)[0] or b'application/octet-stream'
@@ -350,7 +413,7 @@ class MultipartDataSender(FileBodyProducer):
 				ct = b'text/plain'
 				dst.write( b'Content-Disposition:'
 					b' form-data; name="{}"\r\n'.format(name) )
-			dst.write(b'Content-Type: {}\r\n\r\n'.format(ct))
+			dst.write(b'Content-Type: {}\r\n\r\n'.format(ct) if ct else b'\r\n')
 
 			if isinstance(data, types.StringTypes): dst.write(data)
 			elif not dry_run: yield self.upload_file(data, dst)
@@ -510,8 +573,9 @@ class txBoxAPI(BoxAPIWrapper):
 
 
 	@defer.inlineCallbacks
-	def request( self, url, method='get', data=None,
-			files=None, raw=False, headers=dict(), raise_for=dict() ):
+	def request( self, url, method='get',
+			data=None, encode=None, files=None,
+			raw=False, headers=dict(), raise_for=dict() ):
 		if self.debug_requests:
 			url_debug = _dump_trunc(url)
 			log.debug('HTTP request: {} {} (h: {}, data: {}, files: {}), raw: {}'.format(
@@ -524,15 +588,19 @@ class txBoxAPI(BoxAPIWrapper):
 		headers.setdefault('User-Agent', 'txBox')
 
 		if data is not None:
-			if method == 'post':
+			if encode is None:
+				encode = 'json' if method != 'post' else 'form'
+			if encode == 'form':
 				headers.setdefault('Content-Type', 'application/x-www-form-urlencoded')
 				body = FileBodyProducer(io.BytesIO(urlencode(data)), timer=timeout)
-			else:
+			elif encode == 'json':
 				headers.setdefault('Content-Type', 'application/json')
-				body = FileBodyProducer(io.BytesIO(
-					urlencode(json.dumps(data)) ), timer=timeout)
+				body = FileBodyProducer(io.BytesIO(json.dumps(data)), timer=timeout)
+			else: raise ValueError('Unknown encoding type: {}'.format(encode))
 
 		if files is not None:
+			assert not (data or encode),\
+				'"files" imply multipart encoding and no other data'
 			boundary = os.urandom(16).encode('hex')
 			headers.setdefault( 'Content-Type',
 				'multipart/form-data; boundary={}'.format(boundary) )
@@ -593,8 +661,8 @@ class txBoxAPI(BoxAPIWrapper):
 
 	@defer.inlineCallbacks
 	def __call__( self, url, query=dict(),
-			query_filter=True, auth_header=False,
-			auto_refresh_token=True, **request_kwz ):
+			query_filter=True, auth_header=True,
+			auto_refresh_token=True, upload=False, **request_kwz ):
 		'''Make an arbitrary call to LiveConnect API.
 			Shouldn't be used directly under most circumstances.'''
 		if query_filter:
@@ -605,8 +673,8 @@ class txBoxAPI(BoxAPIWrapper):
 				['Authorization'] = 'Bearer {}'.format(self.auth_access_token)
 		kwz = request_kwz.copy()
 		kwz.setdefault('raise_for', dict())[401] = AuthenticationError
-		api_url = ft.partial( self._api_url,
-			url, query, pass_access_token=not auth_header )
+		api_url = ft.partial( self._api_url, url, query,
+			pass_access_token=not auth_header, upload=upload )
 		try: res = yield self.request(api_url(), **kwz)
 		except AuthenticationError:
 			if not auto_refresh_token: raise
@@ -775,15 +843,24 @@ if __name__ == '__main__':
 		log.info('Quota: df={}, ds={}'.format(*(yield api.get_quota())))
 		log.info('Root listdir: {}'.format(map(op.itemgetter('name'), (yield api.listdir()))))
 
-		# try: file_id = yield api.resolve_path('README.md')
-		# except DoesNotExists: log.info('File not found')
-		# else: api.delete(file_id)
+		try: file_id = yield api.resolve_path('README.md')
+		except DoesNotExists: log.info('File not found')
+		else:
+			contents = yield api.get(file_id)
+			log.info('Downloaded file ({} bytes)'.format(len(contents)))
+			yield api.delete_file(file_id)
+		res = yield api.put('README.md')
+		log.info('Uploaded file: {}'.format(res))
+		yield api.delete_file(res['entries'][0]['id'])
 
-		# from twisted.web._newclient import RequestGenerationFailed, ResponseFailed
-		# try: res = yield api.put('README.md')
-		# except (RequestGenerationFailed, ResponseFailed) as err:
-		# 	err[0][0].raiseException()
-		# log.info('Uploaded: {}'.format(res))
+		try: dir_id = yield api.resolve_path('sometestdir')
+		except DoesNotExists: log.info('Dir not found')
+		else: yield api.delete_folder(dir_id)
+		res = yield api.mkdir('sometestdir')
+		log.info('Created dir: {}'.format(res))
+		yield api.delete_folder(res['id'])
+
+		log.info('Done')
 
 	def done(res):
 		if reactor.running: reactor.stop()
