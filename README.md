@@ -4,8 +4,8 @@ txboxdotnet
 Twisted-based python async interface for [Box (box.net) API (version
 2.0)](http://developers.box.com/).
 
-API docs: http://developers.box.com/docs/
-API Auth docs: http://developers.box.com/oauth/
+ * API docs: http://developers.box.com/docs/
+ * API Auth docs: http://developers.box.com/oauth/
 
 
 Usage Example
