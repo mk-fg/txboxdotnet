@@ -95,3 +95,71 @@ installs into custom paths.
 * [Python 2.7 (not 3.X)](http://python.org)
 
 * [Twisted](http://twistedmatrix.com) (core, web, at least 12.2.0)
+
+
+Implemented methods
+----------------------------------------
+
+Matrix of implemented API method wrappers (same order as in the
+[docs](http://developers.box.com/docs/)):
+
+- folders
+
+	- [x] list: `listdir`
+	- [x] create: `mkdir`
+	- [x] get info: `info_folder`
+	- [ ] copy
+	- [x] delete: `delete_folder`
+	- [ ] update info
+	- [ ] create shared link
+	- [ ] view discussions
+	- [ ] view collaborations
+	- [ ] list from trash
+	- [ ] info from trash
+	- [ ] restore from trash
+	- [ ] delete permanently
+
+- files
+
+	- [x] upload: `put`
+	- [x] download: `get`
+	- [x] get info: `info_file`
+	- [x] upload overwrite: `put`
+	- [ ] upload rename
+	- [ ] view versions
+	- [ ] update info
+	- [x] delete: `delete_file`
+	- [ ] copy
+	- [ ] create shared link
+	- [ ] view comments
+	- [ ] get thumbnail
+	- [ ] get from trash
+	- [ ] restore from trash
+	- [ ] delete permanently
+
+- comments
+- discussions
+- collaborations
+
+- users
+
+	- [x] current user info: `user_info`
+	- [ ] all the rest ;)
+
+- search
+- shared items
+- events
+
+Note that these wrappers tend to be very thin, just taking python method
+arguments and translating these into appropriate API keys, typically looking
+somewhat like this:
+
+	def info_file(self, file_id):
+	  return self(join('files', file_id))
+
+Any missing methods can also be replaced by calling api object in the same way
+as above, passing all the appropriate (as per docs) parameters.
+
+My here purposes are quite narrow, as I use service only for file storage, so
+missing sharing/collaboration are unlikely to be implemented here without
+patches from someone interested in having these.
