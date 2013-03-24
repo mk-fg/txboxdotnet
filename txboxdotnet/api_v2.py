@@ -212,9 +212,13 @@ class BoxAPIWrapper(BoxAuthMixin):
 			return self.request(api_url(), **request_kwz)
 
 
-	def listdir(self, folder_id='0', offset=None, limit=None):
+	def listdir(self, folder_id='0', offset=None, limit=None, fields=None):
 		'Get Box object, representing list of objects in a folder.'
-		return self(join('folders', folder_id, 'items'), dict(offset=offset, limit=limit))
+		if fields is not None\
+			and not isinstance(fields, types.StringTypes): fields = ','.join(fields)
+		return self(
+			join('folders', folder_id, 'items'),
+			dict(offset=offset, limit=limit, fields=fields) )
 
 	def get_user_info(self):
 		'''Get Box object, representing user, containing quota info (among other info).
@@ -723,12 +727,12 @@ class txBox(txBoxAPI):
 		defer.returnValue(root_id if not objects else (yield self.info(root_id)))
 
 	@defer.inlineCallbacks
-	def listdir(self, folder_id='0', type_filter=None, offset=None, limit=None):
+	def listdir(self, folder_id='0', type_filter=None, **listdir_kwz):
 		'''Return a list of objects in the specified folder_id.
 			limit is passed to the API, so might be used as optimization.
 			type_filter can be set to type (str) or sequence
 				of object types to return, post-api-call processing.'''
-		res = yield super(txBox, self).listdir(folder_id=folder_id, limit=limit)
+		res = yield super(txBox, self).listdir(folder_id=folder_id, **listdir_kwz)
 		if res['total_count'] > 1000: # api limit on returned items
 			# Can be worked around by splitting request into multiple ones here
 			raise APILimitationError( 'API enumeration-op response contains'
