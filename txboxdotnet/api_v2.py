@@ -752,6 +752,82 @@ class txBox(txBoxAPI):
 
 
 
+class txBoxPersistent(txBox):
+
+	#: Path to configuration file to use in from_conf() by default.
+	conf_path_default = b'~/.boxrc'
+
+	#: If set to some file, updates will be written back to it.
+	conf_src = None
+
+	#: Raise human-readable errors on structure issues,
+	#:  which assume that there is an user-accessible configuration file
+	conf_raise_structure_errors = False
+
+	#: Hierarchical list of keys to write back
+	#:  to configuration file (preserving the rest) on updates.
+	conf_update_keys = dict(
+		client={'id', 'secret'},
+		auth={'code', 'refresh_token', 'access_expires', 'access_token'})
+
+	@classmethod
+	def from_conf(cls, path=None, **overrides):
+		import yaml, fcntl
+		if path is None:
+			path = cls.conf_path_default
+			log.debug('Using default state-file path: {}'.format(path))
+		path = os.path.expanduser(path)
+
+		conf_src = open(path, 'a+')
+		fcntl.lockf(conf_src, fcntl.LOCK_EX)
+		conf = yaml.load(conf_src.read())
+
+		conf_cls = dict()
+		for ns, keys in cls.conf_update_keys.viewitems():
+			for k in keys:
+				try: v = conf.get(ns, dict()).get(k)
+				except AttributeError:
+					if not cls.conf_raise_structure_errors: raise
+					raise KeyError( 'Unable to get value for configuration parameter'
+						' "{k}" in section "{ns}", check configuration file (path: {path}) syntax'
+						' near the aforementioned section/value.'.format(ns=ns, k=k, path=path) )
+				if v is not None: conf_cls['{}_{}'.format(ns, k)] = conf[ns][k]
+		conf_cls.update(overrides)
+
+		self = cls(**conf_cls)
+		self.conf_src = conf_src
+		return self
+
+	def sync(self):
+		if not self.conf_src: return
+		import yaml
+		self.conf_src.seek(0)
+		conf = yaml.load(self.conf_src)
+		for ns, keys in self.conf_update_keys.viewitems():
+			for k in keys:
+				v = getattr(self, '{}_{}'.format(ns, k), None)
+				if isinstance(v, unicode): v = v.encode('utf-8')
+				if v != conf.get(ns, dict()).get(k):
+					conf.setdefault(ns, dict())[k] = v
+					conf_updated = True
+		if conf_updated:
+			self.conf_src.seek(0)
+			self.conf_src.truncate()
+			yaml.safe_dump(conf, self.conf_src, default_flow_style=False)
+			self.conf_src.flush()
+
+	@ft.wraps(txBox.auth_get_token)
+	def auth_get_token(self, *argz, **kwz):
+		d = defer.maybeDeferred(super(
+			txBoxPersistent, self ).auth_get_token, *argz, **kwz)
+		d.addCallback(lambda ret: [self.sync(), ret][1])
+		return d
+
+	def __del__(self):
+		if self.conf_src: self.conf_src.close()
+
+
+
 class txBoxPluggableSync(txBox):
 
 	config_update_keys = ['auth_access_token', 'auth_refresh_token']
@@ -786,64 +862,25 @@ if __name__ == '__main__':
 	logging.basicConfig(level=logging.DEBUG)
 	twisted_log.PythonLoggingObserver().start()
 
+	req_pool_optz = txBoxPersistent.request_pool_options.copy()
+	api = txBoxPersistent.from_conf(
+		debug_requests=True, request_pool_options=req_pool_optz )
 
-	_no_fallback = object()
-	def read_conf(name, fallback=_no_fallback):
-		try:
-			with open('box_{}'.format(name)) as src:
-				return src.read().strip()
-		except (OSError, IOError):
-			if fallback is _no_fallback: raise
-			return fallback
-
-	def write_conf(name, val):
-		with open('box_{}'.format(name), 'w') as dst: dst.write(val)
-
-	try: client_id, client_secret = map(read_conf, ['client_id', 'client_secret'])
-	except (OSError, IOError):
-		raise KeyError('Create "box_client_id" and "box_client_secret" files.')
-
-	try: auth_code = read_conf('auth_code')
-	except (OSError, IOError):
-		api = txBox(client_id=client_id, client_secret=client_secret)
+	if not api.auth_code:
 		log.info(
 			'\n\n'
 			'Visit the following URL in any web browser (firefox, chrome, safari, etc),\n'
 				'  authorize there, confirm access permissions, and paste URL of an empty page\n'
 				'  (starting with "https://success.box.com/") you will get\n'
-				'  redirected to in the end into "box_auth_code" file.\n\n'
+				'  redirected to into "auth.code" value in ~/.boxrc.\n\n'
 			' URL to visit: {}\n'.format(api.auth_user_get_url()) )
-		raise KeyError('Need "box_auth_code" file.')
+		raise KeyError('Need "auth.code" set.')
 
-	if re.search(r'^https?://', auth_code):
-		api = txBox(client_id=client_id, client_secret=client_secret)
-		api.auth_user_process_url(auth_code)
-		auth_code = api.auth_code
-		write_conf('auth_code', auth_code)
-
-	access_token = read_conf('access_token', None)
-	refresh_token = read_conf('refresh_token', None)
-
-	def token_update_handler(auth_access_token, auth_refresh_token, **kwargs):
-		if auth_access_token is not None:
-			write_conf('access_token', auth_access_token)
-		if auth_refresh_token is not None:
-			write_conf('refresh_token', auth_refresh_token)
-		if kwargs:
-			log.msg( 'Received unhandled Box access'
-				' data, discarded: {}'.format(', '.join(kwargs.keys())) )
-
+	if re.search(r'^https?://', api.auth_code):
+		api.auth_user_process_url(api.auth_code)
 
 	@defer.inlineCallbacks
 	def test():
-		req_pool_optz = txBoxPluggableSync.request_pool_options.copy()
-
-		api = txBoxPluggableSync(
-			client_id=client_id, client_secret=client_secret, auth_code=auth_code,
-			auth_access_token=access_token, auth_refresh_token=refresh_token,
-			config_update_callback=token_update_handler,
-			debug_requests=True, request_pool_options=req_pool_optz )
-
 		log.info('Quota: df={}, ds={}'.format(*(yield api.get_quota())))
 		log.info('Root listdir: {}'.format(map(op.itemgetter('name'), (yield api.listdir()))))
 
