@@ -220,7 +220,7 @@ class BoxAPIWrapper(BoxAuthMixin):
 			join('folders', folder_id, 'items'),
 			dict(offset=offset, limit=limit, fields=fields) )
 
-	def get_user_info(self):
+	def info_user(self):
 		'''Get Box object, representing user, containing quota info (among other info).
 			See http://developers.box.com/docs/#users-user-object'''
 		return self('users/me')
@@ -747,7 +747,7 @@ class txBox(txBoxAPI):
 	def get_quota(self):
 		'Return tuple of (bytes_available, bytes_quota).'
 		du, ds = op.itemgetter('space_used', 'space_amount')\
-			((yield super(txBox, self).get_user_info()))
+			((yield super(txBox, self).info_user()))
 		defer.returnValue((ds - du, du))
 
 

@@ -143,7 +143,7 @@ Matrix of implemented API method wrappers (same order as in the
 
 - users
 
-	- [x] current user info: `user_info`
+	- [x] current user info: `info_user`
 	- [ ] all the rest ;)
 
 - search
