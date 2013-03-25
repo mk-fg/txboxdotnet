@@ -748,7 +748,7 @@ class txBox(txBoxAPI):
 		'Return tuple of (bytes_available, bytes_quota).'
 		du, ds = op.itemgetter('space_used', 'space_amount')\
 			((yield super(txBox, self).info_user()))
-		defer.returnValue((ds - du, du))
+		defer.returnValue((ds - du, ds))
 
 
 
