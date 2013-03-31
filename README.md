@@ -11,7 +11,7 @@ Twisted-based python async interface for [Box (box.net) API (version
 Usage Example
 ----------------------------------------
 
-Following script will print listing of the root SkyDrive folder, upload
+Following script will print listing of the root box.net folder, upload
 "test.txt" file there, try to find it in updated folder listing and then remove
 it.
 
