@@ -780,7 +780,7 @@ class txBoxPersistent(txBox):
 
 		conf_src = open(path, 'a+')
 		fcntl.lockf(conf_src, fcntl.LOCK_EX)
-		conf = yaml.load(conf_src.read())
+		conf = yaml.load(conf_src.read()) or dict()
 
 		conf_cls = dict()
 		for ns, keys in cls.conf_update_keys.viewitems():
