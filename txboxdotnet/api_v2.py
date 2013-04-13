@@ -36,7 +36,7 @@ class BoxInteractionError(Exception): pass
 class APILimitationError(BoxInteractionError): pass
 
 class ProtocolError(BoxInteractionError):
-	def __init__(self, code, msg, body):
+	def __init__(self, code, msg, body=None):
 		super(ProtocolError, self).__init__(code, msg)
 		self.code, self.body = code, body
 
@@ -653,7 +653,8 @@ class txBoxAPI(BoxAPIWrapper):
 				log.debug(
 					'HTTP request handling error ({} {}, code: {}): {}'\
 					.format(method, url_debug, code, err.message) )
-			raise raise_for.get(code, ProtocolError)(code, err.message)
+			if code not in raise_for: raise
+			raise raise_for[code](code, err.message)
 
 		except RequestGenerationFailed as err:
 			err[0][0].raiseException()
