@@ -36,9 +36,9 @@ class BoxInteractionError(Exception): pass
 class APILimitationError(BoxInteractionError): pass
 
 class ProtocolError(BoxInteractionError):
-	def __init__(self, code, msg):
+	def __init__(self, code, msg, body):
 		super(ProtocolError, self).__init__(code, msg)
-		self.code = code
+		self.code, self.body = code, body
 
 class AuthenticationError(BoxInteractionError): pass
 
@@ -622,17 +622,15 @@ class txBoxAPI(BoxAPIWrapper):
 			res = yield res_deferred
 			code = res.code
 			if code == http.NO_CONTENT: defer.returnValue(None)
-			if code not in [http.OK, http.CREATED]:
-				if self.debug_requests:
-					res_body = defer.Deferred()
-					res.deliverBody(DataReceiver(res_body, timer=timeout))
-					res_body = yield first_result(timeout, res_body)
-					log.debug('HTTP error response body: {!r}'.format(res_body))
-				raise ProtocolError(code, res.phrase)
 
 			res_body = defer.Deferred()
 			res.deliverBody(DataReceiver(res_body, timer=timeout))
 			res_body = yield first_result(timeout, res_body)
+
+			if code not in [http.OK, http.CREATED]:
+				if self.debug_requests:
+					log.debug('HTTP error response body: {!r}'.format(res_body))
+				raise ProtocolError(code, res.phrase, res_body)
 
 			if self.debug_requests:
 				log.debug( 'HTTP request done ({} {}): {} {} {}, body_len: {}'\
