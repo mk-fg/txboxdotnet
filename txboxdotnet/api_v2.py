@@ -33,8 +33,6 @@ except ImportError: # won't be handled
 
 class BoxInteractionError(Exception): pass
 
-class APILimitationError(BoxInteractionError): pass
-
 class ProtocolError(BoxInteractionError):
 	def __init__(self, code, msg, body=None):
 		super(ProtocolError, self).__init__(code, msg)
@@ -726,17 +724,21 @@ class txBox(txBoxAPI):
 		defer.returnValue(root_id if not objects else (yield self.info(root_id)))
 
 	@defer.inlineCallbacks
-	def listdir(self, folder_id='0', type_filter=None, **listdir_kwz):
+	def listdir( self, folder_id='0',
+			type_filter=None, offset=None, limit=None, **listdir_kwz ):
 		'''Return a list of objects in the specified folder_id.
 			limit is passed to the API, so might be used as optimization.
 			type_filter can be set to type (str) or sequence
 				of object types to return, post-api-call processing.'''
-		res = yield super(txBox, self).listdir(folder_id=folder_id, **listdir_kwz)
-		if res['total_count'] > 1000: # api limit on returned items
-			# Can be worked around by splitting request into multiple ones here
-			raise APILimitationError( 'API enumeration-op response contains'
-				' too many items ({}) - can be truncated.'.format(res['total_count']) )
+		res = yield super(txBox, self).listdir(
+			folder_id=folder_id, offset=offset, limit=limit, **listdir_kwz )
 		lst = res['entries']
+		if limit is None: # treat it as "no limit", using several requests to fetch all items
+			while res['total_count'] > res['offset'] + res['limit']:
+				offset = res['offset'] + res['limit']
+				res = yield super(txBox, self).listdir(
+					folder_id=folder_id, offset=offset, limit=900, **listdir_kwz )
+				lst.extend(res['entries'])
 		if type_filter:
 			if isinstance(type_filter, types.StringTypes): type_filter = {type_filter}
 			lst = list(obj for obj in lst if obj['type'] in type_filter)
