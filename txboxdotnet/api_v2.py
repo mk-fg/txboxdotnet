@@ -728,10 +728,12 @@ class txBox(txBoxAPI):
 			type_filter=None, offset=None, limit=None, **listdir_kwz ):
 		'''Return a list of objects in the specified folder_id.
 			limit is passed to the API, so might be used as optimization.
+				None means "fetch all items, with several requests, if necessary".
 			type_filter can be set to type (str) or sequence
 				of object types to return, post-api-call processing.'''
 		res = yield super(txBox, self).listdir(
-			folder_id=folder_id, offset=offset, limit=limit, **listdir_kwz )
+			folder_id=folder_id, offset=offset,
+			limit=limit if limit is not None else 900, **listdir_kwz )
 		lst = res['entries']
 		if limit is None: # treat it as "no limit", using several requests to fetch all items
 			while res['total_count'] > res['offset'] + res['limit']:
