@@ -178,7 +178,7 @@ class BoxAPIWrapper(BoxAuthMixin):
 			query.setdefault('access_token', self.auth_access_token)
 		if not pass_empty_values:
 			for k, v in query.viewitems():
-				if not v:
+				if v is None:
 					raise ValueError('Empty key {!r} for API call (path: {})'.format(k, path))
 		api_url = self.api_url_base
 		if upload and self.api_url_upload: api_url = self.api_url_upload
