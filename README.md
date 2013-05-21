@@ -16,7 +16,7 @@ Following script will print listing of the root box.net folder, upload
 it.
 
 	from twisted.internet import defer, reactor
-	from txboxdotnet import txBoxAPI
+	from txboxdotnet.api_v2 import txBoxAPI
 
 	config = dict(client_id=..., client_secret=..., ...)
 
