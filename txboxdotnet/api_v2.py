@@ -264,7 +264,7 @@ class BoxAPIWrapper(BoxAuthMixin):
 
 	@ft.wraps(put)
 	def put_file(self, name, src, folder_id='0', file_id=None, file_etag=None):
-		return put((name, src), folder_id=folder_id, file_id=file_id, file_etag=file_etag)
+		return self.put((name, src), folder_id=folder_id, file_id=file_id, file_etag=file_etag)
 
 	def mkdir(self, name=None, folder_id='0'):
 		'''Create a folder with a specified "name" attribute.
