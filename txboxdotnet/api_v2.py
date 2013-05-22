@@ -262,6 +262,19 @@ class BoxAPIWrapper(BoxAuthMixin):
 			headers={'If-Match': file_etag} if file_etag else dict(),
 			files=dict(filename=(name, src), **folder_id) )
 
+	def put_file(self, name, src, folder_id='0', file_id=None, file_etag=None):
+		'''Upload a file, returning error if a file with the same "name" attribute exists,
+				unless valid file_id (and optionally file_etag,
+				to avoid race conditions, raises error 412) is provided.
+			folder_id is the id of a folder to put file into,
+				but only used if file_id keyword is not passed.'''
+		folder_id = dict(parent_id=folder_id) if file_id is None else dict()
+		return self(
+			join('files', 'content') if file_id is None else join('files', file_id, 'content'),
+			method='post', upload=True,
+			headers={'If-Match': file_etag} if file_etag else dict(),
+			files=dict(filename=(name, src), **folder_id) )
+
 	def mkdir(self, name=None, folder_id='0'):
 		'''Create a folder with a specified "name" attribute.
 			folder_id allows to specify a parent folder.'''
@@ -419,7 +432,11 @@ class MultipartDataSender(FileBodyProducer):
 
 			if isinstance(data, types.StringTypes): dst.write(data)
 			elif not dry_run: yield self.upload_file(data, dst)
-			else: dst_ext += os.fstat(data.fileno()).st_size
+			else:
+				if 'size' in dir(data):
+					dst_ext += data.size
+				else:
+					dst_ext += os.fstat(data.fileno()).st_size
 			dst.write(b'\r\n')
 
 		dst.write(b'--{}--\r\n'.format(self.boundary))
