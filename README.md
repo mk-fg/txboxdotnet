@@ -18,11 +18,24 @@ it.
 	from twisted.internet import defer, reactor
 	from txboxdotnet.api_v2 import txBoxAPI
 
-	config = dict(client_id=..., client_secret=..., ...)
+	api = txBoxAPI(
+		client_id='...',
+		client_secret='...', ... )
+
+	if not api.auth_code:
+		print '\n'.join([
+			'Visit the following URL in any web browser (firefox, chrome, safari, etc),',
+				'  authorize there, confirm access permissions, and paste URL of an empty page',
+				'  (starting with "https://success.box.com/") you will get',
+				'  redirected to into "auth_code" value in "config" dict above.\n',
+			'URL to visit:\n  {}'.format(api.auth_user_get_url()) ])
+		exit()
+
+	if re.search(r'^https?://', api.auth_code):
+		api.auth_user_process_url(api.auth_code)
 
 	@defer.inlineCallbacks
 	def do_stuff():
-		api = txBoxAPI(**config)
 
 		# Print root directory listing
 		print list(e['name'] for e in (yield api.listdir()))
@@ -42,9 +55,14 @@ it.
 	do_stuff().addBoth(lambda ignored: reactor.stop())
 	reactor.run()
 
-Note that "config" dict above should contain various authentication data, which
-for the most part, can be derived from "client_id" and "client_secret", provided
-after app registration [on box.net](http://www.box.net/developers/services).
+Note that parameters passed to txBoxAPI class init above should contain
+authentication data, which can/should be derived from "client_id" and
+"client_secret", provided after app registration
+[on box.net](http://www.box.net/developers/services).
+
+Service (at least now) has quite annoying requirement that the "auth_code" it
+will provide after authorizing API access request is only valid for **30 seconds**.
+See [API auth docs](http://developers.box.com/oauth/) for more info on the process.
 
 For more complete example (including oauth2 stuff), see
 [api_v2.py](https://github.com/mk-fg/txboxdotnet/blob/master/txboxdotnet/api_v2.py)
