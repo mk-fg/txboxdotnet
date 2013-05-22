@@ -25,7 +25,7 @@ it.
 		api = txBoxAPI(**config)
 
 		# Print root directory listing
-		print (e['name'] for e in (yield api.listdir()))
+		print list(e['name'] for e in (yield api.listdir()))
 
 		# Upload "test.txt" file from local current directory
 		file_info = yield api.put('test.txt')
