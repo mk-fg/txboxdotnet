@@ -227,7 +227,7 @@ class BoxAPIWrapper(BoxAuthMixin):
 		'''Return metadata of a specified file.
 			See http://developers.box.com/docs/#files-file-object-2
 				for the list and description of possible metadata keys.'''
-		return self(join('files', file_id))
+		return self(join('files', bytes(file_id)))
 
 	def info_folder(self, folder_id='0'):
 		'''Return metadata of a specified folder.
@@ -244,7 +244,7 @@ class BoxAPIWrapper(BoxAuthMixin):
 				some examples: "0-499" - byte offsets 0-499 (inclusive), "-500" - final 500 bytes.'''
 		kwz = dict()
 		if byte_range: kwz['headers'] = dict(Range='bytes={}'.format(byte_range))
-		return self(join('files', file_id, 'content'), dict(version=version), raw=True, **kwz)
+		return self(join('files', bytes(file_id), 'content'), dict(version=version), raw=True, **kwz)
 
 	def put(self, path_or_tuple, folder_id='0', file_id=None, file_etag=None):
 		'''Upload a file, returning error if a file with the same "name" attribute exists,
@@ -257,7 +257,7 @@ class BoxAPIWrapper(BoxAuthMixin):
 			else (path_or_tuple[0], path_or_tuple[1])
 		folder_id = dict(parent_id=folder_id) if file_id is None else dict()
 		return self(
-			join('files', 'content') if file_id is None else join('files', file_id, 'content'),
+			join('files', 'content') if file_id is None else join('files', bytes(file_id), 'content'),
 			method='post', upload=True,
 			headers={'If-Match': file_etag} if file_etag else dict(),
 			files=dict(filename=(name, src), **folder_id) )
@@ -275,7 +275,7 @@ class BoxAPIWrapper(BoxAuthMixin):
 	def delete_file(self, file_id, file_etag=None):
 		'''Delete specified file.
 			Pass file_etag to avoid race conditions (raises error 412).'''
-		return self( join('files', file_id), method='delete',
+		return self( join('files', bytes(file_id)), method='delete',
 			headers={'If-Match': file_etag} if file_etag else dict() )
 
 	def delete_folder(self, folder_id, folder_etag=None, recursive=None):
